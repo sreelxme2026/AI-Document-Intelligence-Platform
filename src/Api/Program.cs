@@ -36,6 +36,10 @@ builder.Services
     .AddSignInManager();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IFileValidator, FileValidator>();
+builder.Services.AddScoped<IFileStorageService, FileStorageService>();
+builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+builder.Services.AddScoped<IDocumentService, DocumentService>();
 
 var jwtSettings = builder.Configuration
     .GetSection("Jwt")
