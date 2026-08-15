@@ -1,6 +1,8 @@
-﻿using Application.DTOs;
-using Application.Interfaces;
+﻿using System.Security.Claims;
 using Api.Controllers;
+using Application.DTOs;
+using Application.Interfaces;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Tests;
@@ -10,6 +12,11 @@ public class QueryControllerTests
     [Fact]
     public async Task Query_WithValidRequest_ReturnsOkWithRagResult()
     {
+        var userId = Guid.NewGuid();
+
+        var chunkId = Guid.NewGuid();
+        var documentId = Guid.NewGuid();
+
         var expectedResult = new RagResult
         {
             Answer = "The refund period is 30 days.",
@@ -17,8 +24,8 @@ public class QueryControllerTests
             [
                 new RetrievalSource
                 {
-                    DocumentChunkId = Guid.NewGuid(),
-                    DocumentId = Guid.NewGuid(),
+                    DocumentChunkId = chunkId,
+                    DocumentId = documentId,
                     ChunkIndex = 0,
                     Content = "Refunds are available within 30 days.",
                     SimilarityScore = 0.95
@@ -26,10 +33,15 @@ public class QueryControllerTests
             ]
         };
 
-        var ragService = new FakeRagService(expectedResult);
+        var ragService = new FakeRagService(
+            expectedResult);
 
-        var controller = new QueryController(
-            ragService);
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
 
         var request = new RagRequest
         {
@@ -57,14 +69,20 @@ public class QueryControllerTests
     [Fact]
     public async Task Query_PassesRequestToRagService()
     {
+        var userId = Guid.NewGuid();
+
         var ragService = new FakeRagService(
             new RagResult
             {
                 Answer = "Test answer"
             });
 
-        var controller = new QueryController(
-            ragService);
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
 
         var request = new RagRequest
         {
@@ -91,7 +109,9 @@ public class QueryControllerTests
     [Fact]
     public async Task Query_PropagatesCancellationToken()
     {
-        var cancellationTokenSource =
+        var userId = Guid.NewGuid();
+
+        using var cancellationTokenSource =
             new CancellationTokenSource();
 
         var cancellationToken =
@@ -103,8 +123,12 @@ public class QueryControllerTests
                 Answer = "Test answer"
             });
 
-        var controller = new QueryController(
-            ragService);
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
 
         await controller.Query(
             new RagRequest
@@ -119,9 +143,424 @@ public class QueryControllerTests
             ragService.LastCancellationToken);
     }
 
+    [Fact]
+    public async Task Query_CreatesQueryHistoryRecord()
+    {
+        var userId = Guid.NewGuid();
+
+        var ragService = new FakeRagService(
+            new RagResult
+            {
+                Answer = "The refund period is 30 days.",
+                Sources =
+                [
+                    new RetrievalSource
+                    {
+                        DocumentChunkId = Guid.NewGuid(),
+                        DocumentId = Guid.NewGuid(),
+                        ChunkIndex = 0,
+                        Content = "Refunds are available within 30 days.",
+                        SimilarityScore = 0.95
+                    }
+                ]
+            });
+
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
+
+        var request = new RagRequest
+        {
+            Query = "What is the refund period?",
+            TopK = 5
+        };
+
+        await controller.Query(
+            request,
+            CancellationToken.None);
+
+        Assert.True(
+            historyService.WasCreateCalled);
+
+        Assert.Equal(
+            userId,
+            historyService.LastUserId);
+
+        Assert.Equal(
+            request.Query,
+            historyService.LastQuery);
+
+        Assert.Equal(
+            "The refund period is 30 days.",
+            historyService.LastAnswer);
+    }
+
+    [Fact]
+    public async Task Query_MapsRetrievedSourcesToHistorySources()
+    {
+        var userId = Guid.NewGuid();
+
+        var firstChunkId = Guid.NewGuid();
+        var secondChunkId = Guid.NewGuid();
+
+        var ragService = new FakeRagService(
+            new RagResult
+            {
+                Answer = "The refund period is 30 days.",
+                Sources =
+                [
+                    new RetrievalSource
+                    {
+                        DocumentChunkId = firstChunkId,
+                        DocumentId = Guid.NewGuid(),
+                        ChunkIndex = 0,
+                        Content = "Refunds are available within 30 days.",
+                        SimilarityScore = 0.95
+                    },
+                    new RetrievalSource
+                    {
+                        DocumentChunkId = secondChunkId,
+                        DocumentId = Guid.NewGuid(),
+                        ChunkIndex = 1,
+                        Content = "Refund requests must be submitted within the allowed period.",
+                        SimilarityScore = 0.82
+                    }
+                ]
+            });
+
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
+
+        await controller.Query(
+            new RagRequest
+            {
+                Query = "What is the refund period?",
+                TopK = 5
+            },
+            CancellationToken.None);
+
+        Assert.NotNull(
+            historyService.LastSources);
+
+        Assert.Equal(
+            2,
+            historyService.LastSources!.Count);
+
+        Assert.Equal(
+            firstChunkId,
+            historyService.LastSources[0].DocumentChunkId);
+
+        Assert.Equal(
+            0.95f,
+            historyService.LastSources[0].RelevanceScore,
+            precision: 5);
+
+        Assert.Equal(
+            secondChunkId,
+            historyService.LastSources[1].DocumentChunkId);
+
+        Assert.Equal(
+            0.82f,
+            historyService.LastSources[1].RelevanceScore,
+            precision: 5);
+    }
+
+    [Fact]
+    public async Task Query_WithSources_SetsHistoryAsGrounded()
+    {
+        var userId = Guid.NewGuid();
+
+        var ragService = new FakeRagService(
+            new RagResult
+            {
+                Answer = "Grounded answer.",
+                Sources =
+                [
+                    new RetrievalSource
+                    {
+                        DocumentChunkId = Guid.NewGuid(),
+                        DocumentId = Guid.NewGuid(),
+                        ChunkIndex = 0,
+                        Content = "Relevant document content.",
+                        SimilarityScore = 0.90
+                    }
+                ]
+            });
+
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
+
+        await controller.Query(
+            new RagRequest
+            {
+                Query = "Test grounded query",
+                TopK = 5
+            },
+            CancellationToken.None);
+
+        Assert.True(
+            historyService.LastIsGrounded);
+    }
+
+    [Fact]
+    public async Task Query_WithoutSources_SetsHistoryAsNotGrounded()
+    {
+        var userId = Guid.NewGuid();
+
+        var ragService = new FakeRagService(
+            new RagResult
+            {
+                Answer =
+                    "I could not find relevant information in the available documents.",
+                Sources = []
+            });
+
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
+
+        await controller.Query(
+            new RagRequest
+            {
+                Query = "Question with no sources",
+                TopK = 5
+            },
+            CancellationToken.None);
+
+        Assert.False(
+            historyService.LastIsGrounded);
+
+        Assert.NotNull(
+            historyService.LastSources);
+
+        Assert.Empty(
+            historyService.LastSources);
+    }
+
+    [Fact]
+    public async Task Query_RecordsNonNegativeResponseTime()
+    {
+        var userId = Guid.NewGuid();
+
+        var ragService = new FakeRagService(
+            new RagResult
+            {
+                Answer = "Test answer"
+            });
+
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
+
+        await controller.Query(
+            new RagRequest
+            {
+                Query = "Test query",
+                TopK = 5
+            },
+            CancellationToken.None);
+
+        Assert.True(
+            historyService.LastResponseTimeMs >= 0);
+    }
+
+    [Fact]
+    public async Task Query_UsesAuthenticatedUserIdForHistory()
+    {
+        var authenticatedUserId = Guid.NewGuid();
+
+        var ragService = new FakeRagService(
+            new RagResult
+            {
+                Answer = "Test answer"
+            });
+
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            authenticatedUserId);
+
+        await controller.Query(
+            new RagRequest
+            {
+                Query = "Test query",
+                TopK = 5
+            },
+            CancellationToken.None);
+
+        Assert.Equal(
+            authenticatedUserId,
+            historyService.LastUserId);
+    }
+
+    [Fact]
+    public async Task Query_InvalidIdentity_ThrowsUnauthorizedAccessException()
+    {
+        var ragService = new FakeRagService(
+            new RagResult
+            {
+                Answer = "Test answer"
+            });
+
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = new QueryController(
+            ragService,
+            historyService);
+
+        controller.ControllerContext =
+            new ControllerContext
+            {
+                HttpContext = CreateHttpContext(
+                    "not-a-guid")
+            };
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            () => controller.Query(
+                new RagRequest
+                {
+                    Query = "Test query",
+                    TopK = 5
+                },
+                CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Query_WhenRagFails_DoesNotCreateHistory()
+    {
+        var userId = Guid.NewGuid();
+
+        var ragService = new FakeRagService(
+            new InvalidOperationException(
+                "RAG generation failed."));
+
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
+
+        var exception =
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => controller.Query(
+                    new RagRequest
+                    {
+                        Query = "Test query",
+                        TopK = 5
+                    },
+                    CancellationToken.None));
+
+        Assert.Equal(
+            "RAG generation failed.",
+            exception.Message);
+
+        Assert.False(
+            historyService.WasCreateCalled);
+    }
+
+    [Fact]
+    public async Task Query_WhenHistoryCreationFails_PropagatesException()
+    {
+        var userId = Guid.NewGuid();
+
+        var ragService = new FakeRagService(
+            new RagResult
+            {
+                Answer = "Test answer"
+            });
+
+        var historyService = new FakeQueryHistoryService
+        {
+            CreateException =
+                new InvalidOperationException(
+                    "History persistence failed.")
+        };
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
+
+        var exception =
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => controller.Query(
+                    new RagRequest
+                    {
+                        Query = "Test query",
+                        TopK = 5
+                    },
+                    CancellationToken.None));
+
+        Assert.Equal(
+            "History persistence failed.",
+            exception.Message);
+
+        Assert.True(
+            historyService.WasCreateCalled);
+    }
+
+    private static QueryController CreateController(
+        FakeRagService ragService,
+        FakeQueryHistoryService historyService,
+        Guid userId)
+    {
+        var controller = new QueryController(
+            ragService,
+            historyService);
+
+        controller.ControllerContext =
+            new ControllerContext
+            {
+                HttpContext = CreateHttpContext(
+                    userId.ToString())
+            };
+
+        return controller;
+    }
+
+    private static DefaultHttpContext CreateHttpContext(
+        string userId)
+    {
+        var identity = new ClaimsIdentity(
+        [
+            new Claim(
+                ClaimTypes.NameIdentifier,
+                userId)
+        ],
+        "TestAuthentication");
+
+        var context = new DefaultHttpContext();
+
+        context.User =
+            new ClaimsPrincipal(identity);
+
+        return context;
+    }
+
     private sealed class FakeRagService : IRagService
     {
-        private readonly RagResult _result;
+        private readonly RagResult? _result;
+        private readonly Exception? _exception;
 
         public RagRequest? LastRequest { get; private set; }
 
@@ -131,9 +570,16 @@ public class QueryControllerTests
             private set;
         }
 
-        public FakeRagService(RagResult result)
+        public FakeRagService(
+            RagResult result)
         {
             _result = result;
+        }
+
+        public FakeRagService(
+            Exception exception)
+        {
+            _exception = exception;
         }
 
         public Task<RagResult> GenerateAnswerAsync(
@@ -143,7 +589,94 @@ public class QueryControllerTests
             LastRequest = request;
             LastCancellationToken = cancellationToken;
 
-            return Task.FromResult(_result);
+            if (_exception is not null)
+            {
+                throw _exception;
+            }
+
+            return Task.FromResult(_result!);
+        }
+    }
+
+    private sealed class FakeQueryHistoryService
+        : IQueryHistoryService
+    {
+        public bool WasCreateCalled { get; private set; }
+
+        public Guid LastUserId { get; private set; }
+
+        public string? LastQuery { get; private set; }
+
+        public string? LastAnswer { get; private set; }
+
+        public bool LastIsGrounded { get; private set; }
+
+        public int LastResponseTimeMs { get; private set; }
+
+        public IReadOnlyList<QueryHistorySourceRequest>?
+            LastSources
+        { get; private set; }
+
+        public Exception? CreateException { get; set; }
+
+        public Task<QueryHistoryResponse> CreateAsync(
+            Guid userId,
+            string query,
+            string answer,
+            bool isGrounded,
+            int? responseTimeMs,
+            IReadOnlyList<QueryHistorySourceRequest> sources)
+        {
+            WasCreateCalled = true;
+
+            LastUserId = userId;
+            LastQuery = query;
+            LastAnswer = answer;
+            LastIsGrounded = isGrounded;
+            LastResponseTimeMs = responseTimeMs ?? -1;
+            LastSources = sources;
+
+            if (CreateException is not null)
+            {
+                throw CreateException;
+            }
+
+            return Task.FromResult(
+                new QueryHistoryResponse
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    Query = query,
+                    Answer = answer,
+                    IsGrounded = isGrounded,
+                    CreatedAt = DateTime.UtcNow,
+                    ResponseTimeMs = responseTimeMs,
+                    Sources =
+                        sources
+                            .Select(source =>
+                                new QueryHistorySourceResponse
+                                {
+                                    DocumentChunkId =
+                                        source.DocumentChunkId,
+                                    RelevanceScore =
+                                        source.RelevanceScore
+                                })
+                            .ToList()
+                });
+        }
+
+        public Task<QueryHistoryListResponse> GetHistoryAsync(
+            Guid userId,
+            QueryHistoryQueryParameters parameters)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<QueryHistoryResponse?> GetByIdAsync(
+            Guid userId,
+            Guid historyId)
+        {
+            throw new NotSupportedException();
         }
     }
 }
