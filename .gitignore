@@ -43,3 +43,5 @@ Thumbs.db
 
 # Our local development secrets
 appsettings.Development.json
+# Runtime uploaded documents
+src/Api/App_Data/
