@@ -159,7 +159,8 @@ public class QueryControllerTests
                         DocumentChunkId = Guid.NewGuid(),
                         DocumentId = Guid.NewGuid(),
                         ChunkIndex = 0,
-                        Content = "Refunds are available within 30 days.",
+                        Content =
+                            "Refunds are available within 30 days.",
                         SimilarityScore = 0.95
                     }
                 ]
@@ -217,7 +218,8 @@ public class QueryControllerTests
                         DocumentChunkId = firstChunkId,
                         DocumentId = Guid.NewGuid(),
                         ChunkIndex = 0,
-                        Content = "Refunds are available within 30 days.",
+                        Content =
+                            "Refunds are available within 30 days.",
                         SimilarityScore = 0.95
                     },
                     new RetrievalSource
@@ -225,7 +227,8 @@ public class QueryControllerTests
                         DocumentChunkId = secondChunkId,
                         DocumentId = Guid.NewGuid(),
                         ChunkIndex = 1,
-                        Content = "Refund requests must be submitted within the allowed period.",
+                        Content =
+                            "Refund requests must be submitted within the allowed period.",
                         SimilarityScore = 0.82
                     }
                 ]
@@ -519,9 +522,112 @@ public class QueryControllerTests
             historyService.WasCreateCalled);
     }
 
+    [Fact]
+    public async Task Query_WhenRagServiceThrowsArgumentException_PropagatesException()
+    {
+        var userId = Guid.NewGuid();
+
+        var ragService = new ThrowingRagService(
+            new ArgumentException(
+                "TopK must be between 1 and 20.",
+                "request"));
+
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
+
+        var exception =
+            await Assert.ThrowsAsync<ArgumentException>(
+                () => controller.Query(
+                    new RagRequest
+                    {
+                        Query = "What is the refund policy?",
+                        TopK = 21
+                    },
+                    CancellationToken.None));
+
+        Assert.Equal(
+            "TopK must be between 1 and 20. (Parameter 'request')",
+            exception.Message);
+
+        Assert.False(
+            historyService.WasCreateCalled);
+    }
+
+    [Fact]
+    public async Task Query_WhenRagServiceThrowsInvalidOperationException_PropagatesException()
+    {
+        var userId = Guid.NewGuid();
+
+        var ragService = new ThrowingRagService(
+            new InvalidOperationException(
+                "Gemini API key is not configured."));
+
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
+
+        var exception =
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => controller.Query(
+                    new RagRequest
+                    {
+                        Query = "What is the refund policy?",
+                        TopK = 5
+                    },
+                    CancellationToken.None));
+
+        Assert.Equal(
+            "Gemini API key is not configured.",
+            exception.Message);
+
+        Assert.False(
+            historyService.WasCreateCalled);
+    }
+
+    [Fact]
+    public async Task Query_WhenRagServiceThrowsUnexpectedException_PropagatesException()
+    {
+        var userId = Guid.NewGuid();
+
+        var ragService = new ThrowingRagService(
+            new Exception(
+                "Unexpected RAG failure."));
+
+        var historyService = new FakeQueryHistoryService();
+
+        var controller = CreateController(
+            ragService,
+            historyService,
+            userId);
+
+        var exception =
+            await Assert.ThrowsAsync<Exception>(
+                () => controller.Query(
+                    new RagRequest
+                    {
+                        Query = "What is the refund policy?",
+                        TopK = 5
+                    },
+                    CancellationToken.None));
+
+        Assert.Equal(
+            "Unexpected RAG failure.",
+            exception.Message);
+
+        Assert.False(
+            historyService.WasCreateCalled);
+    }
+
     private static QueryController CreateController(
-        FakeRagService ragService,
-        FakeQueryHistoryService historyService,
+        IRagService ragService,
+        IQueryHistoryService historyService,
         Guid userId)
     {
         var controller = new QueryController(
@@ -598,6 +704,25 @@ public class QueryControllerTests
         }
     }
 
+    private sealed class ThrowingRagService : IRagService
+    {
+        private readonly Exception _exception;
+
+        public ThrowingRagService(
+            Exception exception)
+        {
+            _exception = exception;
+        }
+
+        public Task<RagResult> GenerateAnswerAsync(
+            RagRequest request,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromException<RagResult>(
+                _exception);
+        }
+    }
+
     private sealed class FakeQueryHistoryService
         : IQueryHistoryService
     {
@@ -615,7 +740,10 @@ public class QueryControllerTests
 
         public IReadOnlyList<QueryHistorySourceRequest>?
             LastSources
-        { get; private set; }
+        {
+            get;
+            private set;
+        }
 
         public Exception? CreateException { get; set; }
 

@@ -78,9 +78,73 @@ public class RagServiceTests
                     },
                     CancellationToken.None));
 
+            Assert.Equal(
+                "TopK must be between 1 and 20. (Parameter 'request')",
+                exception.Message);
+                }
+
+    [Fact]
+    public async Task GenerateAnswerAsync_TopKAboveMaximum_ThrowsArgumentException()
+    {
+        var retrievalService = new FakeRetrievalService();
+
+        var service = CreateService(
+            retrievalService,
+            new GeminiSettings
+            {
+                ApiKey = "test-key",
+                GenerationModel = "test-model"
+            });
+
+        var exception =
+            await Assert.ThrowsAsync<ArgumentException>(
+                () => service.GenerateAnswerAsync(
+                    new RagRequest
+                    {
+                        Query = "What is the leave policy?",
+                        TopK = 21
+                    },
+                    CancellationToken.None));
+
         Assert.Equal(
-            "TopK must be greater than zero. (Parameter 'request')",
+            "TopK must be between 1 and 20. (Parameter 'request')",
             exception.Message);
+    }
+
+    [Fact]
+    public async Task GenerateAnswerAsync_TopKMaximum_IsAccepted()
+    {
+        var retrievalService = new FakeRetrievalService
+        {
+            Result = new RetrievalResult
+            {
+                Sources = []
+            }
+        };
+
+        var service = CreateService(
+            retrievalService,
+            new GeminiSettings
+            {
+                ApiKey = "test-key",
+                GenerationModel = "test-model"
+            });
+
+        var result =
+            await service.GenerateAnswerAsync(
+                new RagRequest
+                {
+                    Query = "What is the leave policy?",
+                    TopK = 20
+                },
+                CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.NotNull(retrievalService.LastRequest);
+
+        Assert.Equal(
+            20,
+            retrievalService.LastRequest.TopK);
     }
 
     [Fact]

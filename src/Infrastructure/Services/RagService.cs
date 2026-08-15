@@ -40,10 +40,10 @@ public class RagService : IRagService
                 nameof(request));
         }
 
-        if (request.TopK <= 0)
+        if (request.TopK <= 0 || request.TopK > 20)
         {
             throw new ArgumentException(
-                "TopK must be greater than zero.",
+                "TopK must be between 1 and 20.",
                 nameof(request));
         }
 

@@ -11,6 +11,9 @@ using System.Text;
 using Application.Interfaces;
 using Infrastructure.Services;
 
+using Api.Middleware;
+using Api.Configuration;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,7 +47,6 @@ builder.Services.AddScoped<IEmbeddingService, EmbeddingService>();
 builder.Services.AddScoped<IRetrievalService, RetrievalService>();
 builder.Services.AddScoped<IRagService, RagService>();
 builder.Services.AddScoped<IQueryHistoryService, QueryHistoryService>();
-builder.Services.AddScoped<IQueryHistoryService, QueryHistoryService>();
 builder.Services.AddScoped<IFileValidator, FileValidator>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
@@ -57,7 +59,10 @@ builder.Services.AddHostedService<DocumentProcessingWorker>();
 var jwtSettings = builder.Configuration
     .GetSection("Jwt")
     .Get<JwtSettings>()
-    ?? throw new InvalidOperationException("JWT settings are not configured.");
+    ?? throw new InvalidOperationException(
+        "JWT settings are not configured.");
+
+JwtConfigurationValidator.Validate(jwtSettings);
 
 builder.Services
     .AddAuthentication(options =>
@@ -78,7 +83,9 @@ builder.Services
             ValidAudience = jwtSettings.Audience,
 
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtSettings.SecretKey))
+                Encoding.UTF8.GetBytes(jwtSettings.SecretKey)),
+
+            ClockSkew = TimeSpan.FromMinutes(1),
         };
     });
 
@@ -86,6 +93,19 @@ builder.Services
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
+builder.Services.AddAuthorization();
+builder.Services.AddControllers();
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -120,7 +140,12 @@ builder.Services.AddSwaggerGen(options =>
         });
 });
 
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 using (var scope = app.Services.CreateScope())
 {
@@ -135,6 +160,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
