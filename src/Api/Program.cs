@@ -12,6 +12,7 @@ using Application.Interfaces;
 using Infrastructure.Services;
 
 using Api.Middleware;
+using Api.Configuration;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -58,7 +59,10 @@ builder.Services.AddHostedService<DocumentProcessingWorker>();
 var jwtSettings = builder.Configuration
     .GetSection("Jwt")
     .Get<JwtSettings>()
-    ?? throw new InvalidOperationException("JWT settings are not configured.");
+    ?? throw new InvalidOperationException(
+        "JWT settings are not configured.");
+
+JwtConfigurationValidator.Validate(jwtSettings);
 
 builder.Services
     .AddAuthentication(options =>
@@ -79,7 +83,9 @@ builder.Services
             ValidAudience = jwtSettings.Audience,
 
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtSettings.SecretKey))
+                Encoding.UTF8.GetBytes(jwtSettings.SecretKey)),
+
+            ClockSkew = TimeSpan.FromMinutes(1),
         };
     });
 
