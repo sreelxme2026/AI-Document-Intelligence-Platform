@@ -7,7 +7,10 @@ public interface IQueryHistoryService
     Task<QueryHistoryResponse> CreateAsync(
         Guid userId,
         string query,
-        string answer);
+        string answer,
+        bool isGrounded,
+        int? responseTimeMs,
+        IReadOnlyList<QueryHistorySourceRequest> sources);
 
     Task<QueryHistoryListResponse> GetHistoryAsync(
         Guid userId,
