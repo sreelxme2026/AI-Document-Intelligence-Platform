@@ -11,6 +11,8 @@ using System.Text;
 using Application.Interfaces;
 using Infrastructure.Services;
 
+using Api.Middleware;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,7 +45,6 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmbeddingService, EmbeddingService>();
 builder.Services.AddScoped<IRetrievalService, RetrievalService>();
 builder.Services.AddScoped<IRagService, RagService>();
-builder.Services.AddScoped<IQueryHistoryService, QueryHistoryService>();
 builder.Services.AddScoped<IQueryHistoryService, QueryHistoryService>();
 builder.Services.AddScoped<IFileValidator, FileValidator>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
@@ -120,7 +121,12 @@ builder.Services.AddSwaggerGen(options =>
         });
 });
 
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 using (var scope = app.Services.CreateScope())
 {
