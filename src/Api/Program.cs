@@ -20,6 +20,9 @@ builder.Services.Configure<JwtSettings>(
 builder.Services.Configure<AdminSettings>(
     builder.Configuration.GetSection("Admin"));
 
+builder.Services.Configure<GeminiSettings>(
+    builder.Configuration.GetSection("Gemini"));
+
 builder.Services.Configure<DocumentUserSettings>(
     builder.Configuration.GetSection("DocumentUser"));
 
@@ -37,6 +40,7 @@ builder.Services
     .AddSignInManager();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IEmbeddingService, EmbeddingService>();
 builder.Services.AddScoped<IFileValidator, FileValidator>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
