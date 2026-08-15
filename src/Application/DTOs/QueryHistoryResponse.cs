@@ -10,5 +10,12 @@ public class QueryHistoryResponse
 
     public string Answer { get; set; } = string.Empty;
 
+    public bool IsGrounded { get; set; }
+
     public DateTime CreatedAt { get; set; }
+
+    public int? ResponseTimeMs { get; set; }
+
+    public IReadOnlyList<QueryHistorySourceResponse> Sources { get; set; }
+        = [];
 }

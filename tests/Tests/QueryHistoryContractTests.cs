@@ -28,11 +28,52 @@ public class QueryHistoryContractTests
     }
 
     [Fact]
+    public void QueryHistorySourceRequest_ShouldExposeExpectedProperties()
+    {
+        var documentChunkId = Guid.NewGuid();
+
+        var source = new QueryHistorySourceRequest
+        {
+            DocumentChunkId = documentChunkId,
+            RelevanceScore = 0.91f
+        };
+
+        Assert.Equal(
+            documentChunkId,
+            source.DocumentChunkId);
+
+        Assert.Equal(
+            0.91f,
+            source.RelevanceScore);
+    }
+
+    [Fact]
+    public void QueryHistorySourceResponse_ShouldExposeExpectedProperties()
+    {
+        var documentChunkId = Guid.NewGuid();
+
+        var source = new QueryHistorySourceResponse
+        {
+            DocumentChunkId = documentChunkId,
+            RelevanceScore = 0.87f
+        };
+
+        Assert.Equal(
+            documentChunkId,
+            source.DocumentChunkId);
+
+        Assert.Equal(
+            0.87f,
+            source.RelevanceScore);
+    }
+
+    [Fact]
     public void QueryHistoryResponse_ShouldExposeExpectedProperties()
     {
         var id = Guid.NewGuid();
         var userId = Guid.NewGuid();
         var createdAt = DateTime.UtcNow;
+        var documentChunkId = Guid.NewGuid();
 
         var response = new QueryHistoryResponse
         {
@@ -40,27 +81,73 @@ public class QueryHistoryContractTests
             UserId = userId,
             Query = "What is the refund policy?",
             Answer = "The refund period is 30 days.",
-            CreatedAt = createdAt
+            IsGrounded = true,
+            CreatedAt = createdAt,
+            ResponseTimeMs = 425,
+            Sources =
+            [
+                new QueryHistorySourceResponse
+                {
+                    DocumentChunkId = documentChunkId,
+                    RelevanceScore = 0.94f
+                }
+            ]
         };
 
         Assert.Equal(id, response.Id);
         Assert.Equal(userId, response.UserId);
+
         Assert.Equal(
             "What is the refund policy?",
             response.Query);
+
         Assert.Equal(
             "The refund period is 30 days.",
             response.Answer);
-        Assert.Equal(createdAt, response.CreatedAt);
+
+        Assert.True(response.IsGrounded);
+
+        Assert.Equal(
+            createdAt,
+            response.CreatedAt);
+
+        Assert.Equal(
+            425,
+            response.ResponseTimeMs);
+
+        Assert.Single(response.Sources);
+
+        Assert.Equal(
+            documentChunkId,
+            response.Sources[0].DocumentChunkId);
+
+        Assert.Equal(
+            0.94f,
+            response.Sources[0].RelevanceScore);
     }
 
     [Fact]
-    public void QueryHistoryResponse_ShouldHaveEmptyStringDefaults()
+    public void QueryHistoryResponse_ShouldHaveExpectedDefaults()
     {
         var response = new QueryHistoryResponse();
 
-        Assert.Equal(string.Empty, response.Query);
-        Assert.Equal(string.Empty, response.Answer);
+        Assert.Equal(Guid.Empty, response.Id);
+        Assert.Equal(Guid.Empty, response.UserId);
+
+        Assert.Equal(
+            string.Empty,
+            response.Query);
+
+        Assert.Equal(
+            string.Empty,
+            response.Answer);
+
+        Assert.False(response.IsGrounded);
+
+        Assert.Null(response.ResponseTimeMs);
+
+        Assert.NotNull(response.Sources);
+        Assert.Empty(response.Sources);
     }
 
     [Fact]
@@ -97,8 +184,7 @@ public class QueryHistoryContractTests
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
             Query = "Test query",
-            Answer = "Test answer",
-            CreatedAt = DateTime.UtcNow
+            Answer = "Test answer"
         };
 
         var response = new QueryHistoryListResponse
@@ -127,5 +213,42 @@ public class QueryHistoryContractTests
         Assert.Contains(
             methods,
             method => method.Name == "GetByIdAsync");
+    }
+
+    [Fact]
+    public void IQueryHistoryService_CreateAsync_ShouldExposeExpectedParameters()
+    {
+        var method = typeof(IQueryHistoryService)
+            .GetMethod("CreateAsync");
+
+        Assert.NotNull(method);
+
+        var parameters = method!.GetParameters();
+
+        Assert.Equal(6, parameters.Length);
+
+        Assert.Equal(
+            typeof(Guid),
+            parameters[0].ParameterType);
+
+        Assert.Equal(
+            typeof(string),
+            parameters[1].ParameterType);
+
+        Assert.Equal(
+            typeof(string),
+            parameters[2].ParameterType);
+
+        Assert.Equal(
+            typeof(bool),
+            parameters[3].ParameterType);
+
+        Assert.Equal(
+            typeof(int?),
+            parameters[4].ParameterType);
+
+        Assert.Equal(
+            typeof(IReadOnlyList<QueryHistorySourceRequest>),
+            parameters[5].ParameterType);
     }
 }
