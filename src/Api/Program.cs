@@ -43,6 +43,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmbeddingService, EmbeddingService>();
 builder.Services.AddScoped<IRetrievalService, RetrievalService>();
 builder.Services.AddScoped<IRagService, RagService>();
+builder.Services.AddScoped<IQueryHistoryService, QueryHistoryService>();
 builder.Services.AddScoped<IFileValidator, FileValidator>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
