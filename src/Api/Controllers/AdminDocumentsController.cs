@@ -50,16 +50,17 @@ public class AdminDocumentsController : ControllerBase
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<DocumentResponse>> Upload(
         IFormFile file,
-        [FromForm] Guid userId,
         [FromForm] string? title,
         [FromForm] string? description,
         [FromForm] string? tags)
     {
+        var adminUserId = GetUserId();
+
         try
         {
             var response =
                 await _adminDocumentService.UploadAsync(
-                    userId,
+                    adminUserId,
                     file.OpenReadStream(),
                     file.FileName,
                     file.ContentType,
@@ -94,5 +95,21 @@ public class AdminDocumentsController : ControllerBase
         }
 
         return NoContent();
+    }
+
+    private Guid GetUserId()
+    {
+        var userIdValue = User.FindFirstValue(
+            ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(
+                userIdValue,
+                out var userId))
+        {
+            throw new UnauthorizedAccessException(
+                "Invalid user identity.");
+        }
+
+        return userId;
     }
 }

@@ -44,9 +44,7 @@ public class AdminDocumentService : IAdminDocumentService
 
         if (!string.IsNullOrWhiteSpace(parameters.Search))
         {
-            var search = parameters.Search
-                .Trim()
-                .ToLower();
+            var search = parameters.Search.Trim().ToLower();
 
             query = query.Where(document =>
                 document.FileName.ToLower().Contains(search) ||
@@ -217,32 +215,52 @@ public class AdminDocumentService : IAdminDocumentService
             return false;
         }
 
-        var documentChunkIds = await _dbContext.DocumentChunks
-            .Where(chunk =>
-                chunk.DocumentId == documentId)
-            .Select(chunk => chunk.Id)
-            .ToListAsync();
-
-        if (documentChunkIds.Count > 0)
-        {
-            var queryHistorySources =
-                await _dbContext.QueryHistorySources
-                    .Where(source =>
-                        documentChunkIds.Contains(
-                            source.DocumentChunkId))
-                    .ToListAsync();
-
-            _dbContext.QueryHistorySources.RemoveRange(
-                queryHistorySources);
-        }
-
-        _dbContext.Documents.Remove(document);
-
         await using var transaction =
             await _dbContext.Database.BeginTransactionAsync();
 
         try
         {
+            /*
+             * QueryHistorySource has a RESTRICT foreign key to
+             * DocumentChunk. Therefore those rows must be deleted
+             * before the document's chunks can be deleted.
+             */
+            var documentChunkIds = await _dbContext.DocumentChunks
+                .Where(chunk =>
+                    chunk.DocumentId == documentId)
+                .Select(chunk => chunk.Id)
+                .ToListAsync();
+
+            if (documentChunkIds.Count > 0)
+            {
+                var queryHistorySources =
+                    await _dbContext.QueryHistorySources
+                        .Where(source =>
+                            documentChunkIds.Contains(
+                                source.DocumentChunkId))
+                        .ToListAsync();
+
+                if (queryHistorySources.Count > 0)
+                {
+                    _dbContext.QueryHistorySources.RemoveRange(
+                        queryHistorySources);
+
+                    /*
+                     * Persist the dependent-row deletion first so
+                     * the RESTRICT foreign key no longer blocks
+                     * deletion of the document chunks.
+                     */
+                    await _dbContext.SaveChangesAsync();
+                }
+            }
+
+            /*
+             * DocumentChunk and Embedding use cascade deletion,
+             * so deleting the document removes its chunks and
+             * embeddings.
+             */
+            _dbContext.Documents.Remove(document);
+
             await _dbContext.SaveChangesAsync();
 
             await transaction.CommitAsync();
@@ -253,6 +271,10 @@ public class AdminDocumentService : IAdminDocumentService
             throw;
         }
 
+        /*
+         * Delete the physical file only after the database
+         * transaction has successfully committed.
+         */
         await _fileStorageService.DeleteAsync(
             document.StoragePath);
 
