@@ -1,6 +1,6 @@
 ﻿namespace Application.DTOs;
 
-public class QueryHistoryQueryParameters
+public class AdminQueryHistoryQueryParameters
 {
     public int Page { get; set; } = 1;
 

@@ -47,6 +47,9 @@ builder.Services.AddScoped<IEmbeddingService, EmbeddingService>();
 builder.Services.AddScoped<IRetrievalService, RetrievalService>();
 builder.Services.AddScoped<IRagService, RagService>();
 builder.Services.AddScoped<IQueryHistoryService, QueryHistoryService>();
+builder.Services.AddScoped<
+    IAdminQueryHistoryService,
+    AdminQueryHistoryService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped<IFileValidator, FileValidator>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
