@@ -7,7 +7,9 @@ import { useAuth } from "../auth/AuthContext";
 
 import {
   getAdminUsers,
+  deleteAdminUser,
   getAdminDocuments,
+  deleteAdminDocument,
   uploadAdminDocument,
   askAdminDocuments,
   getAdminQueryHistory,
@@ -57,6 +59,9 @@ const AdminDashboardPage = () => {
   const [userLoading, setUserLoading] =
     useState(false);
 
+  const [deletingUserId, setDeletingUserId] =
+    useState<string | null>(null);
+
   /*
    * =========================
    * DOCUMENTS
@@ -84,6 +89,9 @@ const AdminDashboardPage = () => {
   const [documentLoading, setDocumentLoading] =
     useState(false);
 
+  const [deletingDocumentId, setDeletingDocumentId] =
+    useState<string | null>(null);
+
   /*
    * =========================
    * UPLOAD
@@ -110,7 +118,7 @@ const AdminDashboardPage = () => {
 
   /*
    * =========================
-   * ADMIN RAG
+   * ADMIN RAG QUERY
    * =========================
    */
 
@@ -193,6 +201,7 @@ const AdminDashboardPage = () => {
         );
 
       setUsers(result.items);
+
       setUserTotalPages(
         result.totalPages
       );
@@ -200,7 +209,8 @@ const AdminDashboardPage = () => {
       setError(
         err.response?.status === 403
           ? "You are not authorized to access admin users."
-          : "Failed to load users."
+          : err.response?.data?.message ||
+            "Failed to load users."
       );
     } finally {
       setUserLoading(false);
@@ -228,6 +238,7 @@ const AdminDashboardPage = () => {
         );
 
       setDocuments(result.items);
+
       setDocumentTotalPages(
         result.totalPages
       );
@@ -235,7 +246,8 @@ const AdminDashboardPage = () => {
       setError(
         err.response?.status === 403
           ? "You are not authorized to access admin documents."
-          : "Failed to load documents."
+          : err.response?.data?.message ||
+            "Failed to load documents."
       );
     } finally {
       setDocumentLoading(false);
@@ -266,6 +278,7 @@ const AdminDashboardPage = () => {
         });
 
       setHistory(result.items);
+
       setHistoryTotalPages(
         result.totalPages
       );
@@ -273,7 +286,8 @@ const AdminDashboardPage = () => {
       setError(
         err.response?.status === 403
           ? "You are not authorized to access query history."
-          : "Failed to load query history."
+          : err.response?.data?.message ||
+            "Failed to load query history."
       );
     } finally {
       setHistoryLoading(false);
@@ -298,6 +312,26 @@ const AdminDashboardPage = () => {
   useEffect(() => {
     if (section === "documents") {
       loadDocuments();
+
+      /*
+       * Make sure the uploader dropdown
+       * has users even if the admin directly
+       * opens the Documents section.
+       */
+      if (users.length === 0) {
+        getAdminUsers(
+          1,
+          100,
+          ""
+        )
+          .then((result) => {
+            setUsers(result.items);
+          })
+          .catch(() => {
+            // Document loading error is already
+            // handled by loadDocuments().
+          });
+      }
     }
   }, [
     section,
@@ -309,6 +343,25 @@ const AdminDashboardPage = () => {
   useEffect(() => {
     if (section === "history") {
       loadHistory();
+
+      /*
+       * Make sure the user filter has users
+       * available even when opening History directly.
+       */
+      if (users.length === 0) {
+        getAdminUsers(
+          1,
+          100,
+          ""
+        )
+          .then((result) => {
+            setUsers(result.items);
+          })
+          .catch(() => {
+            // Ignore here. History loading has
+            // its own error handling.
+          });
+      }
     }
   }, [
     section,
@@ -320,7 +373,7 @@ const AdminDashboardPage = () => {
 
   /*
    * =========================
-   * USER SEARCH
+   * SEARCH USERS
    * =========================
    */
 
@@ -329,8 +382,6 @@ const AdminDashboardPage = () => {
       setUserLoading(true);
       setError("");
 
-      setUserPage(1);
-
       const result =
         await getAdminUsers(
           1,
@@ -338,7 +389,10 @@ const AdminDashboardPage = () => {
           userSearch
         );
 
+      setUserPage(1);
+
       setUsers(result.items);
+
       setUserTotalPages(
         result.totalPages
       );
@@ -354,7 +408,7 @@ const AdminDashboardPage = () => {
 
   /*
    * =========================
-   * DOCUMENT SEARCH
+   * SEARCH DOCUMENTS
    * =========================
    */
 
@@ -362,8 +416,6 @@ const AdminDashboardPage = () => {
     try {
       setDocumentLoading(true);
       setError("");
-
-      setDocumentPage(1);
 
       const result =
         await getAdminDocuments(
@@ -374,7 +426,10 @@ const AdminDashboardPage = () => {
           documentUploader
         );
 
+      setDocumentPage(1);
+
       setDocuments(result.items);
+
       setDocumentTotalPages(
         result.totalPages
       );
@@ -390,7 +445,7 @@ const AdminDashboardPage = () => {
 
   /*
    * =========================
-   * QUERY HISTORY SEARCH
+   * SEARCH QUERY HISTORY
    * =========================
    */
 
@@ -398,8 +453,6 @@ const AdminDashboardPage = () => {
     try {
       setHistoryLoading(true);
       setError("");
-
-      setHistoryPage(1);
 
       const result =
         await getAdminQueryHistory({
@@ -413,7 +466,10 @@ const AdminDashboardPage = () => {
             : "",
         });
 
+      setHistoryPage(1);
+
       setHistory(result.items);
+
       setHistoryTotalPages(
         result.totalPages
       );
@@ -424,6 +480,144 @@ const AdminDashboardPage = () => {
       );
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  /*
+   * =========================
+   * DELETE USER
+   * =========================
+   */
+
+  const handleDeleteUser = async (
+    user: AdminUser
+  ) => {
+    const confirmed =
+      window.confirm(
+        `Are you sure you want to delete ${user.email}?\n\nThis will permanently delete the user and their related documents and query history.`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      clearMessages();
+
+      setDeletingUserId(
+        user.id
+      );
+
+      await deleteAdminUser(
+        user.id
+      );
+
+      setMessage(
+        `User ${user.email} was deleted successfully.`
+      );
+
+      /*
+       * Remove the user immediately from
+       * the current table.
+       */
+      setUsers((currentUsers) =>
+        currentUsers.filter(
+          (item) =>
+            item.id !== user.id
+        )
+      );
+
+      /*
+       * Reload the current page so pagination
+       * and counts stay correct.
+       */
+      await loadUsers();
+
+      /*
+       * If the deleted user was selected as
+       * a document uploader, clear the filter.
+       */
+      if (
+        documentUploader === user.id
+      ) {
+        setDocumentUploader("");
+      }
+
+      /*
+       * If the deleted user was selected in
+       * query history, clear that filter.
+       */
+      if (
+        historyUserId === user.id
+      ) {
+        setHistoryUserId("");
+      }
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message ||
+          err.response?.data?.detail ||
+          "Failed to delete user."
+      );
+    } finally {
+      setDeletingUserId(null);
+    }
+  };
+
+  /*
+   * =========================
+   * DELETE DOCUMENT
+   * =========================
+   */
+
+  const handleDeleteDocument = async (
+    document: AdminDocument
+  ) => {
+    const confirmed =
+      window.confirm(
+        `Are you sure you want to delete "${document.originalFileName}"?\n\nThis will permanently delete the document and its processed data.`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      clearMessages();
+
+      setDeletingDocumentId(
+        document.id
+      );
+
+      await deleteAdminDocument(
+        document.id
+      );
+
+      setMessage(
+        `Document "${document.originalFileName}" was deleted successfully.`
+      );
+
+      /*
+       * Remove it immediately from UI.
+       */
+      setDocuments((currentDocuments) =>
+        currentDocuments.filter(
+          (item) =>
+            item.id !== document.id
+        )
+      );
+
+      /*
+       * Reload to keep pagination accurate.
+       */
+      await loadDocuments();
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message ||
+          err.response?.data?.detail ||
+          "Failed to delete document."
+      );
+    } finally {
+      setDeletingDocumentId(null);
     }
   };
 
@@ -488,6 +682,7 @@ const AdminDashboardPage = () => {
     } catch (err: any) {
       setError(
         err.response?.data?.message ||
+          err.response?.data?.detail ||
           "Failed to upload document."
       );
     } finally {
@@ -507,6 +702,7 @@ const AdminDashboardPage = () => {
     e.preventDefault();
 
     clearMessages();
+
     setQueryResult(null);
 
     if (!query.trim()) {
@@ -529,6 +725,7 @@ const AdminDashboardPage = () => {
     } catch (err: any) {
       setError(
         err.response?.data?.message ||
+          err.response?.data?.detail ||
           "Failed to process the query."
       );
     } finally {
@@ -538,7 +735,7 @@ const AdminDashboardPage = () => {
 
   /*
    * =========================
-   * HISTORY DETAILS
+   * QUERY HISTORY DETAILS
    * =========================
    */
 
@@ -553,7 +750,9 @@ const AdminDashboardPage = () => {
           id
         );
 
-      setSelectedHistory(result);
+      setSelectedHistory(
+        result
+      );
     } catch (err: any) {
       setError(
         err.response?.data?.message ||
@@ -644,9 +843,10 @@ const AdminDashboardPage = () => {
                 ? "active"
                 : ""
             }
-            onClick={() =>
-              setSection("users")
-            }
+            onClick={() => {
+              clearMessages();
+              setSection("users");
+            }}
           >
             👥 Users
           </button>
@@ -657,9 +857,10 @@ const AdminDashboardPage = () => {
                 ? "active"
                 : ""
             }
-            onClick={() =>
-              setSection("documents")
-            }
+            onClick={() => {
+              clearMessages();
+              setSection("documents");
+            }}
           >
             📄 Documents
           </button>
@@ -670,9 +871,10 @@ const AdminDashboardPage = () => {
                 ? "active"
                 : ""
             }
-            onClick={() =>
-              setSection("query")
-            }
+            onClick={() => {
+              clearMessages();
+              setSection("query");
+            }}
           >
             🤖 Ask Documents
           </button>
@@ -683,9 +885,10 @@ const AdminDashboardPage = () => {
                 ? "active"
                 : ""
             }
-            onClick={() =>
-              setSection("history")
-            }
+            onClick={() => {
+              clearMessages();
+              setSection("history");
+            }}
           >
             🕘 Query History
           </button>
@@ -717,7 +920,7 @@ const AdminDashboardPage = () => {
                   </h2>
 
                   <p>
-                    View and search registered users.
+                    Manage registered users.
                   </p>
                 </div>
               </div>
@@ -732,7 +935,9 @@ const AdminDashboardPage = () => {
                     )
                   }
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                    if (
+                      e.key === "Enter"
+                    ) {
                       searchUsers();
                     }
                   }}
@@ -751,8 +956,7 @@ const AdminDashboardPage = () => {
                 <p>
                   Loading users...
                 </p>
-              ) : users.length ===
-                0 ? (
+              ) : users.length === 0 ? (
                 <div className="admin-empty">
                   No users found.
                 </div>
@@ -775,6 +979,10 @@ const AdminDashboardPage = () => {
 
                         <th>
                           Created
+                        </th>
+
+                        <th>
+                          Action
                         </th>
                       </tr>
                     </thead>
@@ -812,6 +1020,26 @@ const AdminDashboardPage = () => {
                                 user.createdAt
                               ).toLocaleString()}
                             </td>
+
+                            <td>
+                              <button
+                                className="danger-button"
+                                disabled={
+                                  deletingUserId ===
+                                  user.id
+                                }
+                                onClick={() =>
+                                  handleDeleteUser(
+                                    user
+                                  )
+                                }
+                              >
+                                {deletingUserId ===
+                                user.id
+                                  ? "Deleting..."
+                                  : "Delete"}
+                              </button>
+                            </td>
                           </tr>
                         )
                       )}
@@ -841,24 +1069,26 @@ const AdminDashboardPage = () => {
                   </h2>
 
                   <p>
-                    Search, filter, upload and manage documents.
+                    Search, upload and manage documents.
                   </p>
                 </div>
               </div>
 
-              {/* DOCUMENT SEARCH */}
-
               <div className="admin-toolbar">
                 <input
                   placeholder="Search documents..."
-                  value={documentSearch}
+                  value={
+                    documentSearch
+                  }
                   onChange={(e) =>
                     setDocumentSearch(
                       e.target.value
                     )
                   }
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                    if (
+                      e.key === "Enter"
+                    ) {
                       searchDocuments();
                     }
                   }}
@@ -1107,6 +1337,10 @@ const AdminDashboardPage = () => {
                         <th>
                           Pages
                         </th>
+
+                        <th>
+                          Action
+                        </th>
                       </tr>
                     </thead>
 
@@ -1127,12 +1361,13 @@ const AdminDashboardPage = () => {
 
                               <br />
 
-                              <small>
-                                {
-                                  doc.title ||
-                                  "-"
-                                }
-                              </small>
+                              {doc.title && (
+                                <small>
+                                  {
+                                    doc.title
+                                  }
+                                </small>
+                              )}
                             </td>
 
                             <td>
@@ -1173,6 +1408,26 @@ const AdminDashboardPage = () => {
                                 "-"
                               }
                             </td>
+
+                            <td>
+                              <button
+                                className="danger-button"
+                                disabled={
+                                  deletingDocumentId ===
+                                  doc.id
+                                }
+                                onClick={() =>
+                                  handleDeleteDocument(
+                                    doc
+                                  )
+                                }
+                              >
+                                {deletingDocumentId ===
+                                doc.id
+                                  ? "Deleting..."
+                                  : "Delete"}
+                              </button>
+                            </td>
                           </tr>
                         )
                       )}
@@ -1190,7 +1445,7 @@ const AdminDashboardPage = () => {
           )}
 
           {/* =========================
-              ADMIN QUERY
+              ADMIN RAG QUERY
               ========================= */}
 
           {section === "query" && (
@@ -1228,30 +1483,20 @@ const AdminDashboardPage = () => {
                     min={1}
                     max={20}
                     value={topK}
-                    onChange={(e) => {
-                      const value =
-                        Number(
-                          e.target.value
-                        );
-
-                      if (
-                        Number.isNaN(
-                          value
-                        )
-                      ) {
-                        return;
-                      }
-
+                    onChange={(e) =>
                       setTopK(
                         Math.min(
                           20,
                           Math.max(
                             1,
-                            value
+                            Number(
+                              e.target
+                                .value
+                            )
                           )
                         )
-                      );
-                    }}
+                      )
+                    }
                   />
                 </label>
 
@@ -1283,7 +1528,8 @@ const AdminDashboardPage = () => {
                     Sources
                   </h3>
 
-                  {queryResult.sources.length ===
+                  {queryResult.sources
+                    .length ===
                   0 ? (
                     <p>
                       No relevant sources were returned.
@@ -1365,7 +1611,9 @@ const AdminDashboardPage = () => {
                     )
                   }
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                    if (
+                      e.key === "Enter"
+                    ) {
                       searchHistory();
                     }
                   }}
@@ -1614,7 +1862,8 @@ const AdminDashboardPage = () => {
                     Sources
                   </h4>
 
-                  {selectedHistory.sources.length ===
+                  {selectedHistory.sources
+                    .length ===
                   0 ? (
                     <p>
                       No sources.
