@@ -690,6 +690,7 @@ public class QueryControllerTests
 
         public Task<RagResult> GenerateAnswerAsync(
             RagRequest request,
+            Guid? userId,
             CancellationToken cancellationToken)
         {
             LastRequest = request;
@@ -716,6 +717,7 @@ public class QueryControllerTests
 
         public Task<RagResult> GenerateAnswerAsync(
             RagRequest request,
+            Guid? userId,
             CancellationToken cancellationToken)
         {
             return Task.FromException<RagResult>(

@@ -34,6 +34,7 @@ public class AdminQueryController : ControllerBase
 
         var result = await _ragService.GenerateAnswerAsync(
             request,
+            null,
             cancellationToken);
 
         stopwatch.Stop();

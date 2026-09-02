@@ -91,6 +91,7 @@ public class RagServiceIntegrationTests
                     Query = "How many days of annual leave does a full-time employee receive?",
                     TopK = 2
                 },
+                null,
                 CancellationToken.None);
 
         Assert.NotNull(result);
@@ -182,6 +183,7 @@ public class RagServiceIntegrationTests
                     Query = "What are the office hours?",
                     TopK = 1
                 },
+                null,
                 CancellationToken.None);
 
         Assert.False(

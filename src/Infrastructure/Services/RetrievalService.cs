@@ -60,18 +60,37 @@ public class RetrievalService : IRetrievalService
                 "Query embedding is empty.");
         }
 
-        var storedEmbeddings = await _dbContext.Embeddings
-            .AsNoTracking()
-            .Join(
-                _dbContext.DocumentChunks.AsNoTracking(),
-                embedding => embedding.DocumentChunkId,
-                chunk => chunk.Id,
-                (embedding, chunk) => new
-                {
-                    Embedding = embedding,
-                    Chunk = chunk
-                })
-            .ToListAsync(cancellationToken);
+        var embeddingQuery = _dbContext.Embeddings
+    .AsNoTracking()
+    .Join(
+        _dbContext.DocumentChunks.AsNoTracking(),
+        embedding => embedding.DocumentChunkId,
+        chunk => chunk.Id,
+        (embedding, chunk) => new
+        {
+            Embedding = embedding,
+            Chunk = chunk
+        })
+    .Join(
+        _dbContext.Documents.AsNoTracking(),
+        item => item.Chunk.DocumentId,
+        document => document.Id,
+        (item, document) => new
+        {
+            item.Embedding,
+            item.Chunk,
+            Document = document
+        });
+
+        if (request.UserId.HasValue)
+        {
+            embeddingQuery = embeddingQuery.Where(item =>
+                item.Document.UploadedByUserId ==
+                request.UserId.Value);
+        }
+
+        var storedEmbeddings =
+            await embeddingQuery.ToListAsync(cancellationToken);
 
         if (storedEmbeddings.Count == 0)
         {

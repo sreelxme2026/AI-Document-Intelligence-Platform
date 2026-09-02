@@ -1,10 +1,9 @@
 ﻿using Application.DTOs;
 
-namespace Application.Interfaces;
-
 public interface IRagService
 {
     Task<RagResult> GenerateAnswerAsync(
         RagRequest request,
+        Guid? userId,
         CancellationToken cancellationToken);
 }
