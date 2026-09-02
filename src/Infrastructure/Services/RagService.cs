@@ -26,6 +26,7 @@ public class RagService : IRagService
 
     public async Task<RagResult> GenerateAnswerAsync(
         RagRequest request,
+        Guid? userId,
         CancellationToken cancellationToken)
     {
         if (request is null)
@@ -68,6 +69,7 @@ public class RagService : IRagService
                 new RetrievalRequest
                 {
                     Query = request.Query,
+                    UserId = userId,
                     TopK = request.TopK
                 },
                 cancellationToken);

@@ -34,6 +34,7 @@ public class QueryController : ControllerBase
 
         var result = await _ragService.GenerateAnswerAsync(
             request,
+            userId,
             cancellationToken);
 
         stopwatch.Stop();

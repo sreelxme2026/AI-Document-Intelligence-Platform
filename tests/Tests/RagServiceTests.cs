@@ -25,6 +25,7 @@ public class RagServiceTests
         await Assert.ThrowsAsync<ArgumentNullException>(
             () => service.GenerateAnswerAsync(
                 null!,
+                null,
                 CancellationToken.None));
     }
 
@@ -48,6 +49,7 @@ public class RagServiceTests
                     {
                         Query = ""
                     },
+                    null,
                     CancellationToken.None));
 
         Assert.Equal(
@@ -76,12 +78,13 @@ public class RagServiceTests
                         Query = "What is the leave policy?",
                         TopK = 0
                     },
+                    null,
                     CancellationToken.None));
 
-            Assert.Equal(
-                "TopK must be between 1 and 20. (Parameter 'request')",
-                exception.Message);
-                }
+        Assert.Equal(
+            "TopK must be between 1 and 20. (Parameter 'request')",
+            exception.Message);
+    }
 
     [Fact]
     public async Task GenerateAnswerAsync_TopKAboveMaximum_ThrowsArgumentException()
@@ -104,6 +107,7 @@ public class RagServiceTests
                         Query = "What is the leave policy?",
                         TopK = 21
                     },
+                    null,
                     CancellationToken.None));
 
         Assert.Equal(
@@ -137,6 +141,7 @@ public class RagServiceTests
                     Query = "What is the leave policy?",
                     TopK = 20
                 },
+                null,
                 CancellationToken.None);
 
         Assert.NotNull(result);
@@ -168,6 +173,7 @@ public class RagServiceTests
                         Query = "What is the leave policy?",
                         TopK = 5
                     },
+                    null,
                     CancellationToken.None));
 
         Assert.Equal(
@@ -196,6 +202,7 @@ public class RagServiceTests
                         Query = "What is the leave policy?",
                         TopK = 5
                     },
+                    null,
                     CancellationToken.None));
 
         Assert.Equal(
@@ -229,6 +236,7 @@ public class RagServiceTests
                     Query = "What is the leave policy?",
                     TopK = 5
                 },
+                null,
                 CancellationToken.None);
 
         Assert.Equal(
@@ -263,6 +271,7 @@ public class RagServiceTests
                 Query = "What is the leave policy?",
                 TopK = 7
             },
+            null,
             CancellationToken.None);
 
         Assert.NotNull(
