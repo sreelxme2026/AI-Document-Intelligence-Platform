@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Tests;
 
@@ -669,6 +668,12 @@ public class AdminUserServiceTests
             DeletedPaths.Add(storagePath);
 
             return Task.CompletedTask;
+        }
+
+        public Task<Stream?> OpenReadAsync(
+            string storagePath)
+        {
+            return Task.FromResult<Stream?>(null);
         }
     }
 }

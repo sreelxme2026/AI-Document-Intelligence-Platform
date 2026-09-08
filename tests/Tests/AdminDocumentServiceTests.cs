@@ -488,6 +488,116 @@ public class AdminDocumentServiceTests
     }
 
     [Fact]
+    public async Task OpenAsync_ReturnsDocumentStream()
+    {
+        await using var context = CreateDbContext();
+
+        var document = CreateDocument("document.pdf");
+
+        context.Documents.Add(document);
+        await context.SaveChangesAsync();
+
+        var storage = new FakeFileStorageService();
+
+        var expectedContent =
+            "This is the document content.";
+
+        storage.OpenedStream =
+            new MemoryStream(
+                System.Text.Encoding.UTF8.GetBytes(
+                    expectedContent));
+
+        var service = CreateService(
+            context,
+            storage: storage);
+
+        var result =
+            await service.OpenAsync(document.Id);
+
+        Assert.NotNull(result);
+
+        Assert.Equal(
+            document.ContentType,
+            result.Value.ContentType);
+
+        Assert.Equal(
+            document.OriginalFileName,
+            result.Value.FileName);
+
+        Assert.Equal(
+            document.StoragePath,
+            storage.OpenedPath);
+
+        using var reader =
+            new StreamReader(result.Value.Stream);
+
+        var actualContent =
+            await reader.ReadToEndAsync();
+
+        Assert.Equal(
+            expectedContent,
+            actualContent);
+    }
+
+    [Fact]
+    public async Task OpenAsync_MissingDocumentReturnsNull()
+    {
+        await using var context = CreateDbContext();
+
+        var storage = new FakeFileStorageService();
+
+        var service = CreateService(
+            context,
+            storage: storage);
+
+        var result =
+            await service.OpenAsync(Guid.NewGuid());
+
+        Assert.Null(result);
+        Assert.Null(storage.OpenedPath);
+    }
+
+    [Fact]
+    public async Task OpenAsync_EmptyIdThrows()
+    {
+        await using var context = CreateDbContext();
+
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => service.OpenAsync(Guid.Empty));
+    }
+
+    [Fact]
+    public async Task OpenAsync_MissingPhysicalFileReturnsNull()
+    {
+        await using var context = CreateDbContext();
+
+        var document = CreateDocument("document.pdf");
+
+        context.Documents.Add(document);
+        await context.SaveChangesAsync();
+
+        var storage = new FakeFileStorageService
+        {
+            OpenedStream = null
+        };
+
+        var service = CreateService(
+            context,
+            storage: storage);
+
+        var result =
+            await service.OpenAsync(document.Id);
+
+        Assert.Null(result);
+
+        Assert.Equal(
+            document.StoragePath,
+            storage.OpenedPath);
+    }
+
+    [Fact]
     public async Task UploadAsync_CreatesDocumentAndQueuesProcessing()
     {
         await using var context = CreateDbContext();
@@ -678,6 +788,10 @@ public class AdminDocumentServiceTests
         await using var context = CreateDbContext();
 
         var service = CreateService(context);
+
+        await using var stream =
+            new MemoryStream(
+                "test content"u8.ToArray());
 
         await Assert.ThrowsAsync<ArgumentNullException>(
             () => service.UploadAsync(
@@ -950,7 +1064,7 @@ public class AdminDocumentServiceTests
             Id = Guid.NewGuid(),
             UserName = email,
             Email = email,
-            Role = Application.Enums.UserRole.DocumentUser,
+            Role = UserRole.DocumentUser,
             CreatedAt = DateTime.UtcNow
         };
     }
@@ -986,6 +1100,10 @@ public class AdminDocumentServiceTests
 
         public string? DeletedPath { get; private set; }
 
+        public Stream? OpenedStream { get; set; }
+
+        public string? OpenedPath { get; private set; }
+
         public Task<string> SaveAsync(
             Guid documentId,
             string fileName,
@@ -1007,6 +1125,14 @@ public class AdminDocumentServiceTests
             DeletedPath = storagePath;
 
             return Task.CompletedTask;
+        }
+
+        public Task<Stream?> OpenReadAsync(
+            string storagePath)
+        {
+            OpenedPath = storagePath;
+
+            return Task.FromResult(OpenedStream);
         }
     }
 

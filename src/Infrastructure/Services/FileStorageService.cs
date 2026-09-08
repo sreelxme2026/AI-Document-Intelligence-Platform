@@ -45,7 +45,8 @@ public class FileStorageService : IFileStorageService
         return filePath;
     }
 
-    public Task DeleteAsync(string storagePath)
+    public Task DeleteAsync(
+        string storagePath)
     {
         if (File.Exists(storagePath))
         {
@@ -53,5 +54,24 @@ public class FileStorageService : IFileStorageService
         }
 
         return Task.CompletedTask;
+    }
+
+    public Task<Stream?> OpenReadAsync(
+        string storagePath)
+    {
+        if (!File.Exists(storagePath))
+        {
+            return Task.FromResult<Stream?>(null);
+        }
+
+        Stream stream = new FileStream(
+            storagePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 81920,
+            useAsync: true);
+
+        return Task.FromResult<Stream?>(stream);
     }
 }

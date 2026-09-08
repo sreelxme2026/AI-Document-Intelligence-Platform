@@ -22,4 +22,7 @@ public interface IAdminDocumentService
 
     Task<bool> DeleteAsync(
         Guid documentId);
+
+    Task<(Stream Stream, string ContentType, string FileName)?> OpenAsync(
+    Guid documentId);
 }
