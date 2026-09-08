@@ -7,5 +7,9 @@ public interface IFileStorageService
         string fileName,
         Stream fileStream);
 
-    Task DeleteAsync(string storagePath);
+    Task DeleteAsync(
+        string storagePath);
+
+    Task<Stream?> OpenReadAsync(
+        string storagePath);
 }

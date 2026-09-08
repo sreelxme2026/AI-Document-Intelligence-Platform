@@ -122,6 +122,40 @@ public class AdminDocumentService : IAdminDocumentService
             : MapToResponse(document);
     }
 
+    public async Task<(Stream Stream, string ContentType, string FileName)?> OpenAsync(
+    Guid documentId)
+    {
+        if (documentId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Document ID cannot be empty.",
+                nameof(documentId));
+        }
+
+        var document = await _dbContext.Documents
+            .AsNoTracking()
+            .FirstOrDefaultAsync(document =>
+                document.Id == documentId);
+
+        if (document is null)
+        {
+            return null;
+        }
+
+        var stream = await _fileStorageService.OpenReadAsync(
+            document.StoragePath);
+
+        if (stream is null)
+        {
+            return null;
+        }
+
+        return (
+            stream,
+            document.ContentType,
+            document.OriginalFileName);
+    }
+
     public async Task<DocumentResponse> UploadAsync(
         Guid userId,
         Stream fileStream,

@@ -46,6 +46,22 @@ public class AdminDocumentsController : ControllerBase
         return Ok(response);
     }
 
+    [HttpGet("{id:guid}/view")]
+    public async Task<IActionResult> View(Guid id)
+    {
+        var result = await _adminDocumentService.OpenAsync(id);
+
+        if (result is null)
+        {
+            return NotFound();
+        }
+
+        return File(
+            result.Value.Stream,
+            result.Value.ContentType,
+            enableRangeProcessing: true);
+    }
+
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<DocumentResponse>> Upload(
