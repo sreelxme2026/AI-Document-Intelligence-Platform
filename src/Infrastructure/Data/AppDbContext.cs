@@ -16,6 +16,8 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
 
     public DbSet<DocumentChunk> DocumentChunks => Set<DocumentChunk>();
 
+    public DbSet<DocumentAccess> DocumentAccesses => Set<DocumentAccess>();
+
     public DbSet<Embedding> Embeddings => Set<Embedding>();
 
     public DbSet<QueryHistory> QueryHistories => Set<QueryHistory>();
@@ -27,6 +29,7 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
         base.OnModelCreating(builder);
 
         ConfigureDocument(builder);
+        ConfigureDocumentAccess(builder);
         ConfigureDocumentChunk(builder);
         ConfigureEmbedding(builder);
         ConfigureQueryHistory(builder);
@@ -156,6 +159,37 @@ public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
                 .WithMany()
                 .HasForeignKey(s => s.DocumentChunkId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureDocumentAccess(ModelBuilder builder)
+    {
+        builder.Entity<DocumentAccess>(entity =>
+        {
+            entity.HasKey(access => access.Id);
+
+            entity.Property(access => access.GrantedAt)
+                .IsRequired();
+
+            entity.HasIndex(access =>
+                new
+                {
+                    access.DocumentId,
+                    access.UserId
+                })
+                .IsUnique();
+
+            entity.HasOne<Document>()
+                .WithMany()
+                .HasForeignKey(access =>
+                    access.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(access =>
+                    access.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

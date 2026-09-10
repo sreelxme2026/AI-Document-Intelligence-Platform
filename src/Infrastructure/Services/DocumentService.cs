@@ -78,7 +78,10 @@ public class DocumentService : IDocumentService
         var query = _dbContext.Documents
             .AsNoTracking()
             .Where(document =>
-                document.UploadedByUserId == userId);
+                document.UploadedByUserId == userId ||
+                _dbContext.DocumentAccesses.Any(access =>
+                    access.DocumentId == document.Id &&
+                    access.UserId == userId));
 
         if (!string.IsNullOrWhiteSpace(parameters.Status) &&
             Enum.TryParse<DocumentStatus>(
@@ -130,7 +133,12 @@ public class DocumentService : IDocumentService
             .AsNoTracking()
             .FirstOrDefaultAsync(document =>
                 document.Id == documentId &&
-                document.UploadedByUserId == userId);
+                (
+                    document.UploadedByUserId == userId ||
+                    _dbContext.DocumentAccesses.Any(access =>
+                        access.DocumentId == document.Id &&
+                        access.UserId == userId)
+                ));
 
         return document is null
             ? null
@@ -145,7 +153,12 @@ public class DocumentService : IDocumentService
             .AsNoTracking()
             .Where(document =>
                 document.Id == documentId &&
-                document.UploadedByUserId == userId)
+                (
+                    document.UploadedByUserId == userId ||
+                    _dbContext.DocumentAccesses.Any(access =>
+                        access.DocumentId == document.Id &&
+                        access.UserId == userId)
+                ))
             .Select(document => new DocumentStatusResponse
             {
                 Id = document.Id,

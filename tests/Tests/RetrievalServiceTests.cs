@@ -490,6 +490,77 @@ public class RetrievalServiceTests
     }
 
     [Fact]
+    public async Task RetrieveAsync_WithUserId_ReturnsGrantedDocuments()
+    {
+        await using var dbContext = CreateDbContext();
+
+        var ownerId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        var documentId = Guid.NewGuid();
+
+        dbContext.Documents.Add(
+            CreateDocument(
+                documentId,
+                ownerId));
+
+        var chunk = CreateChunk(
+            documentId,
+            0,
+            "Shared document content.");
+
+        dbContext.DocumentChunks.Add(chunk);
+
+        dbContext.Embeddings.Add(
+            CreateEmbedding(
+                chunk.Id,
+                [1.0f, 0.0f]));
+
+        dbContext.DocumentAccesses.Add(
+            new DocumentAccess
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = documentId,
+                UserId = userId,
+                GrantedAt = DateTime.UtcNow
+            });
+
+        await dbContext.SaveChangesAsync();
+
+        var embeddingService =
+            new FakeEmbeddingService(
+                [1.0f, 0.0f]);
+
+        var service = CreateService(
+            dbContext,
+            embeddingService);
+
+        var result = await service.RetrieveAsync(
+            new RetrievalRequest
+            {
+                Query = "shared document",
+                TopK = 5,
+                UserId = userId
+            },
+            CancellationToken.None);
+
+        var source = Assert.Single(
+            result.Sources);
+
+        Assert.Equal(
+            chunk.Id,
+            source.DocumentChunkId);
+
+        Assert.Equal(
+            documentId,
+            source.DocumentId);
+
+        Assert.Equal(
+            "Shared document content.",
+            source.Content);
+    }
+
+    [Fact]
     public async Task RetrieveAsync_WithUserId_DoesNotReturnOtherUsersDocuments()
     {
         await using var dbContext = CreateDbContext();
@@ -539,6 +610,201 @@ public class RetrievalServiceTests
         Assert.Empty(
             result.Sources);
     }
+
+    [Fact]
+    public async Task RetrieveAsync_WithUserId_DoesNotIncludeUnauthorizedDocumentInTopK()
+    {
+        await using var dbContext = CreateDbContext();
+
+        var userId = Guid.NewGuid();
+        var authorizedOwnerId = Guid.NewGuid();
+        var unauthorizedOwnerId = Guid.NewGuid();
+
+        var authorizedDocumentId = Guid.NewGuid();
+        var unauthorizedDocumentId = Guid.NewGuid();
+
+        dbContext.Documents.AddRange(
+            CreateDocument(
+                authorizedDocumentId,
+                authorizedOwnerId),
+            CreateDocument(
+                unauthorizedDocumentId,
+                unauthorizedOwnerId));
+
+        var authorizedChunk = CreateChunk(
+            authorizedDocumentId,
+            0,
+            "Authorized document content.");
+
+        var unauthorizedChunk = CreateChunk(
+            unauthorizedDocumentId,
+            0,
+            "Unauthorized confidential document content.");
+
+        dbContext.DocumentChunks.AddRange(
+            authorizedChunk,
+            unauthorizedChunk);
+
+        /*
+         * The unauthorized document is intentionally MORE similar
+         * than the authorized document.
+         */
+        dbContext.Embeddings.AddRange(
+            CreateEmbedding(
+                authorizedChunk.Id,
+                [0.8f, 0.6f]),
+            CreateEmbedding(
+                unauthorizedChunk.Id,
+                [1.0f, 0.0f]));
+
+        dbContext.DocumentAccesses.Add(
+            new DocumentAccess
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = authorizedDocumentId,
+                UserId = userId,
+                GrantedAt = DateTime.UtcNow
+            });
+
+        await dbContext.SaveChangesAsync();
+
+        var embeddingService =
+            new FakeEmbeddingService(
+                [1.0f, 0.0f]);
+
+        var service = CreateService(
+            dbContext,
+            embeddingService);
+
+        var result = await service.RetrieveAsync(
+            new RetrievalRequest
+            {
+                Query = "confidential document",
+                TopK = 1,
+                UserId = userId
+            },
+            CancellationToken.None);
+
+        var source = Assert.Single(
+            result.Sources);
+
+        Assert.Equal(
+            authorizedDocumentId,
+            source.DocumentId);
+
+        Assert.Equal(
+            authorizedChunk.Id,
+            source.DocumentChunkId);
+
+        Assert.DoesNotContain(
+            result.Sources,
+            item =>
+                item.DocumentId == unauthorizedDocumentId);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WithUserId_ReturnsOwnedAndGrantedDocuments()
+    {
+        await using var dbContext = CreateDbContext();
+
+        var userId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+
+        var ownedDocumentId = Guid.NewGuid();
+        var grantedDocumentId = Guid.NewGuid();
+        var privateDocumentId = Guid.NewGuid();
+
+        dbContext.Documents.AddRange(
+            CreateDocument(
+                ownedDocumentId,
+                userId),
+            CreateDocument(
+                grantedDocumentId,
+                otherUserId),
+            CreateDocument(
+                privateDocumentId,
+                Guid.NewGuid()));
+
+        var ownedChunk = CreateChunk(
+            ownedDocumentId,
+            0,
+            "User's own document.");
+
+        var grantedChunk = CreateChunk(
+            grantedDocumentId,
+            0,
+            "Document explicitly shared with user.");
+
+        var privateChunk = CreateChunk(
+            privateDocumentId,
+            0,
+            "Private document user cannot access.");
+
+        dbContext.DocumentChunks.AddRange(
+            ownedChunk,
+            grantedChunk,
+            privateChunk);
+
+        dbContext.Embeddings.AddRange(
+            CreateEmbedding(
+                ownedChunk.Id,
+                [1.0f, 0.0f]),
+            CreateEmbedding(
+                grantedChunk.Id,
+                [0.9f, 0.1f]),
+            CreateEmbedding(
+                privateChunk.Id,
+                [1.0f, 0.0f]));
+
+        dbContext.DocumentAccesses.Add(
+            new DocumentAccess
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = grantedDocumentId,
+                UserId = userId,
+                GrantedAt = DateTime.UtcNow
+            });
+
+        await dbContext.SaveChangesAsync();
+
+        var embeddingService =
+            new FakeEmbeddingService(
+                [1.0f, 0.0f]);
+
+        var service = CreateService(
+            dbContext,
+            embeddingService);
+
+        var result = await service.RetrieveAsync(
+            new RetrievalRequest
+            {
+                Query = "documents",
+                TopK = 5,
+                UserId = userId
+            },
+            CancellationToken.None);
+
+        Assert.Equal(
+            2,
+            result.Sources.Count);
+
+        Assert.Contains(
+            result.Sources,
+            source =>
+                source.DocumentId == ownedDocumentId);
+
+        Assert.Contains(
+            result.Sources,
+            source =>
+                source.DocumentId == grantedDocumentId);
+
+        Assert.DoesNotContain(
+            result.Sources,
+            source =>
+                source.DocumentId == privateDocumentId);
+    }
+
+
 
     [Fact]
     public async Task RetrieveAsync_WithoutUserId_ReturnsDocumentsFromAllUsers()

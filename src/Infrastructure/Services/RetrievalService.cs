@@ -61,36 +61,41 @@ public class RetrievalService : IRetrievalService
         }
 
         var embeddingQuery = _dbContext.Embeddings
-    .AsNoTracking()
-    .Join(
-        _dbContext.DocumentChunks.AsNoTracking(),
-        embedding => embedding.DocumentChunkId,
-        chunk => chunk.Id,
-        (embedding, chunk) => new
-        {
-            Embedding = embedding,
-            Chunk = chunk
-        })
-    .Join(
-        _dbContext.Documents.AsNoTracking(),
-        item => item.Chunk.DocumentId,
-        document => document.Id,
-        (item, document) => new
-        {
-            item.Embedding,
-            item.Chunk,
-            Document = document
-        });
+            .AsNoTracking()
+            .Join(
+                _dbContext.DocumentChunks.AsNoTracking(),
+                embedding => embedding.DocumentChunkId,
+                chunk => chunk.Id,
+                (embedding, chunk) => new
+                {
+                    Embedding = embedding,
+                    Chunk = chunk
+                })
+            .Join(
+                _dbContext.Documents.AsNoTracking(),
+                item => item.Chunk.DocumentId,
+                document => document.Id,
+                (item, document) => new
+                {
+                    item.Embedding,
+                    item.Chunk,
+                    Document = document
+                });
 
         if (request.UserId.HasValue)
         {
+            var userId = request.UserId.Value;
+
             embeddingQuery = embeddingQuery.Where(item =>
-                item.Document.UploadedByUserId ==
-                request.UserId.Value);
+                item.Document.UploadedByUserId == userId ||
+                _dbContext.DocumentAccesses.Any(access =>
+                    access.DocumentId == item.Document.Id &&
+                    access.UserId == userId));
         }
 
         var storedEmbeddings =
-            await embeddingQuery.ToListAsync(cancellationToken);
+            await embeddingQuery.ToListAsync(
+                cancellationToken);
 
         if (storedEmbeddings.Count == 0)
         {

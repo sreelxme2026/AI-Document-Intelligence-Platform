@@ -199,6 +199,184 @@ public class AdminDocumentsControllerTests
     }
 
     [Fact]
+    public async Task GrantAccess_ReturnsOkWithAccessResponse()
+    {
+        var documentId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        var expected = new DocumentAccessResponse
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = documentId,
+            UserId = userId,
+            GrantedAt = DateTime.UtcNow
+        };
+
+        var service = new FakeAdminDocumentService
+        {
+            GrantAccessResult = expected
+        };
+
+        var controller = new AdminDocumentsController(service);
+
+        var request = new AdminDocumentAccessRequest
+        {
+            UserId = userId
+        };
+
+        var result = await controller.GrantAccess(
+            documentId,
+            request);
+
+        var okResult = Assert.IsType<OkObjectResult>(
+            result.Result);
+
+        var response = Assert.IsType<DocumentAccessResponse>(
+            okResult.Value);
+
+        Assert.Equal(
+            expected.Id,
+            response.Id);
+
+        Assert.Equal(
+            documentId,
+            response.DocumentId);
+
+        Assert.Equal(
+            userId,
+            response.UserId);
+
+        Assert.Equal(
+            documentId,
+            service.LastGrantDocumentId);
+
+        Assert.Equal(
+            userId,
+            service.LastGrantUserId);
+    }
+
+    [Fact]
+    public async Task GrantAccess_InvalidRequest_ReturnsBadRequest()
+    {
+        var service = new FakeAdminDocumentService
+        {
+            GrantAccessException =
+                new ArgumentException(
+                    "User ID cannot be empty.")
+        };
+
+        var controller = new AdminDocumentsController(service);
+
+        var documentId = Guid.NewGuid();
+
+        var request = new AdminDocumentAccessRequest
+        {
+            UserId = Guid.Empty
+        };
+
+        var result = await controller.GrantAccess(
+            documentId,
+            request);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(
+            result.Result);
+
+        Assert.NotNull(badRequest.Value);
+    }
+
+    [Fact]
+    public async Task GrantAccess_InvalidOperation_ReturnsBadRequest()
+    {
+        var service = new FakeAdminDocumentService
+        {
+            GrantAccessException =
+                new InvalidOperationException(
+                    "The specified document does not exist.")
+        };
+
+        var controller = new AdminDocumentsController(service);
+
+        var result = await controller.GrantAccess(
+            Guid.NewGuid(),
+            new AdminDocumentAccessRequest
+            {
+                UserId = Guid.NewGuid()
+            });
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(
+            result.Result);
+
+        Assert.NotNull(badRequest.Value);
+    }
+
+    [Fact]
+    public async Task RevokeAccess_ExistingAccess_ReturnsNoContent()
+    {
+        var documentId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+
+        var service = new FakeAdminDocumentService
+        {
+            RevokeAccessResult = true
+        };
+
+        var controller = new AdminDocumentsController(service);
+
+        var result = await controller.RevokeAccess(
+            documentId,
+            userId);
+
+        Assert.IsType<NoContentResult>(result);
+
+        Assert.Equal(
+            documentId,
+            service.LastRevokeDocumentId);
+
+        Assert.Equal(
+            userId,
+            service.LastRevokeUserId);
+    }
+
+    [Fact]
+    public async Task RevokeAccess_MissingAccess_ReturnsNotFound()
+    {
+        var service = new FakeAdminDocumentService
+        {
+            RevokeAccessResult = false
+        };
+
+        var controller = new AdminDocumentsController(service);
+
+        var result = await controller.RevokeAccess(
+            Guid.NewGuid(),
+            Guid.NewGuid());
+
+        Assert.IsType<NotFoundResult>(result);
+    }
+
+    [Fact]
+    public async Task RevokeAccess_InvalidRequest_ReturnsBadRequest()
+    {
+        var service = new FakeAdminDocumentService
+        {
+            RevokeAccessException =
+                new ArgumentException(
+                    "User ID cannot be empty.")
+        };
+
+        var controller = new AdminDocumentsController(service);
+
+        var result = await controller.RevokeAccess(
+            Guid.NewGuid(),
+            Guid.Empty);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(
+            result);
+
+        Assert.NotNull(badRequest.Value);
+    }
+
+    [Fact]
     public void Controller_RequiresAdminRole()
     {
         var attribute = typeof(AdminDocumentsController)
@@ -227,6 +405,15 @@ public class AdminDocumentsControllerTests
             string FileName)? OpenResult
         { get; set; }
 
+        public DocumentAccessResponse GrantAccessResult { get; set; }
+            = new();
+
+        public bool RevokeAccessResult { get; set; }
+
+        public Exception? GrantAccessException { get; set; }
+
+        public Exception? RevokeAccessException { get; set; }
+
         public AdminDocumentQueryParameters? LastParameters
         {
             get;
@@ -240,6 +427,30 @@ public class AdminDocumentsControllerTests
         }
 
         public Guid LastOpenedDocumentId
+        {
+            get;
+            private set;
+        }
+
+        public Guid LastGrantDocumentId
+        {
+            get;
+            private set;
+        }
+
+        public Guid LastGrantUserId
+        {
+            get;
+            private set;
+        }
+
+        public Guid LastRevokeDocumentId
+        {
+            get;
+            private set;
+        }
+
+        public Guid LastRevokeUserId
         {
             get;
             private set;
@@ -292,6 +503,40 @@ public class AdminDocumentsControllerTests
             Guid documentId)
         {
             throw new NotImplementedException();
+        }
+
+        public Task<DocumentAccessResponse> GrantAccessAsync(
+            Guid documentId,
+            Guid userId)
+        {
+            LastGrantDocumentId = documentId;
+            LastGrantUserId = userId;
+
+            if (GrantAccessException is not null)
+            {
+                return Task.FromException<DocumentAccessResponse>(
+                    GrantAccessException);
+            }
+
+            return Task.FromResult(
+                GrantAccessResult);
+        }
+
+        public Task<bool> RevokeAccessAsync(
+            Guid documentId,
+            Guid userId)
+        {
+            LastRevokeDocumentId = documentId;
+            LastRevokeUserId = userId;
+
+            if (RevokeAccessException is not null)
+            {
+                return Task.FromException<bool>(
+                    RevokeAccessException);
+            }
+
+            return Task.FromResult(
+                RevokeAccessResult);
         }
     }
 }

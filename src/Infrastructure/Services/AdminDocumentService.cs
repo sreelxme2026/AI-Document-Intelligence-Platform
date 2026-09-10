@@ -230,6 +230,115 @@ public class AdminDocumentService : IAdminDocumentService
         return MapToResponse(document);
     }
 
+    public async Task<DocumentAccessResponse> GrantAccessAsync(
+    Guid documentId,
+    Guid userId)
+    {
+        if (documentId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Document ID cannot be empty.",
+                nameof(documentId));
+        }
+
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "User ID cannot be empty.",
+                nameof(userId));
+        }
+
+        var documentExists = await _dbContext.Documents
+            .AnyAsync(document =>
+                document.Id == documentId);
+
+        if (!documentExists)
+        {
+            throw new InvalidOperationException(
+                "The specified document does not exist.");
+        }
+
+        var userExists = await _dbContext.Users
+            .AnyAsync(user =>
+                user.Id == userId);
+
+        if (!userExists)
+        {
+            throw new InvalidOperationException(
+                "The specified user does not exist.");
+        }
+
+        var isOwner = await _dbContext.Documents
+            .AnyAsync(document =>
+                document.Id == documentId &&
+                document.UploadedByUserId == userId);
+
+        if (isOwner)
+        {
+            throw new InvalidOperationException(
+                "The document owner already has access.");
+        }
+
+        var existingAccess = await _dbContext.DocumentAccesses
+            .FirstOrDefaultAsync(access =>
+                access.DocumentId == documentId &&
+                access.UserId == userId);
+
+        if (existingAccess is not null)
+        {
+            return MapToAccessResponse(existingAccess);
+        }
+
+        var documentAccess = new DocumentAccess
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = documentId,
+            UserId = userId,
+            GrantedAt = DateTime.UtcNow
+        };
+
+        _dbContext.DocumentAccesses.Add(documentAccess);
+
+        await _dbContext.SaveChangesAsync();
+
+        return MapToAccessResponse(documentAccess);
+    }
+
+    public async Task<bool> RevokeAccessAsync(
+    Guid documentId,
+    Guid userId)
+    {
+        if (documentId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Document ID cannot be empty.",
+                nameof(documentId));
+        }
+
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "User ID cannot be empty.",
+                nameof(userId));
+        }
+
+        var access = await _dbContext.DocumentAccesses
+            .FirstOrDefaultAsync(item =>
+                item.DocumentId == documentId &&
+                item.UserId == userId);
+
+        if (access is null)
+        {
+            return false;
+        }
+
+        _dbContext.DocumentAccesses.Remove(access);
+
+        await _dbContext.SaveChangesAsync();
+
+        return true;
+    }
+
     public async Task<bool> DeleteAsync(
         Guid documentId)
     {
@@ -313,6 +422,18 @@ public class AdminDocumentService : IAdminDocumentService
             document.StoragePath);
 
         return true;
+    }
+
+    private static DocumentAccessResponse MapToAccessResponse(
+    DocumentAccess access)
+    {
+        return new DocumentAccessResponse
+        {
+            Id = access.Id,
+            DocumentId = access.DocumentId,
+            UserId = access.UserId,
+            GrantedAt = access.GrantedAt
+        };
     }
 
     private static DocumentResponse MapToResponse(

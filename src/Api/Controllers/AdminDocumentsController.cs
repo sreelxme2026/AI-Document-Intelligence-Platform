@@ -98,6 +98,64 @@ public class AdminDocumentsController : ControllerBase
         }
     }
 
+    [HttpPost("{documentId:guid}/access")]
+    public async Task<ActionResult<DocumentAccessResponse>> GrantAccess(
+        Guid documentId,
+        [FromBody] AdminDocumentAccessRequest request)
+    {
+        try
+        {
+            var response =
+                await _adminDocumentService.GrantAccessAsync(
+                    documentId,
+                    request.UserId);
+
+            return Ok(response);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+    }
+
+    [HttpDelete("{documentId:guid}/access/{userId:guid}")]
+    public async Task<IActionResult> RevokeAccess(
+        Guid documentId,
+        Guid userId)
+    {
+        try
+        {
+            var revoked =
+                await _adminDocumentService.RevokeAccessAsync(
+                    documentId,
+                    userId);
+
+            if (!revoked)
+            {
+                return NotFound();
+            }
+
+            return NoContent();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(
         Guid id)

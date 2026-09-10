@@ -25,4 +25,12 @@ public interface IAdminDocumentService
 
     Task<(Stream Stream, string ContentType, string FileName)?> OpenAsync(
     Guid documentId);
+
+    Task<DocumentAccessResponse> GrantAccessAsync(
+    Guid documentId,
+    Guid userId);
+
+    Task<bool> RevokeAccessAsync(
+        Guid documentId,
+        Guid userId);
 }

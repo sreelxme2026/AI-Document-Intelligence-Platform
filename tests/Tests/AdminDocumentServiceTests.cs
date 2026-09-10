@@ -1003,6 +1003,264 @@ public class AdminDocumentServiceTests
                     q => q.Id == history.Id));
     }
 
+    [Fact]
+    public async Task GrantAccessAsync_ValidDocumentAndUser_CreatesAccess()
+    {
+        await using var context = CreateDbContext();
+
+        var owner = CreateUser();
+        var user = CreateUser();
+
+        var document = CreateDocument("document.pdf");
+        document.UploadedByUserId = owner.Id;
+
+        context.Users.AddRange(owner, user);
+        context.Documents.Add(document);
+
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        var result = await service.GrantAccessAsync(
+            document.Id,
+            user.Id);
+
+        Assert.NotEqual(Guid.Empty, result.Id);
+        Assert.Equal(document.Id, result.DocumentId);
+        Assert.Equal(user.Id, result.UserId);
+        Assert.NotEqual(default, result.GrantedAt);
+
+        var storedAccess =
+            await context.DocumentAccesses
+                .SingleAsync();
+
+        Assert.Equal(
+            document.Id,
+            storedAccess.DocumentId);
+
+        Assert.Equal(
+            user.Id,
+            storedAccess.UserId);
+
+        Assert.NotEqual(
+            default,
+            storedAccess.GrantedAt);
+    }
+
+    [Fact]
+    public async Task GrantAccessAsync_MissingDocument_Throws()
+    {
+        await using var context = CreateDbContext();
+
+        var user = CreateUser();
+
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.GrantAccessAsync(
+                Guid.NewGuid(),
+                user.Id));
+    }
+
+    [Fact]
+    public async Task GrantAccessAsync_MissingUser_Throws()
+    {
+        await using var context = CreateDbContext();
+
+        var owner = CreateUser();
+
+        var document = CreateDocument("document.pdf");
+        document.UploadedByUserId = owner.Id;
+
+        context.Users.Add(owner);
+        context.Documents.Add(document);
+
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.GrantAccessAsync(
+                document.Id,
+                Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task GrantAccessAsync_EmptyDocumentId_Throws()
+    {
+        await using var context = CreateDbContext();
+
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => service.GrantAccessAsync(
+                Guid.Empty,
+                Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task GrantAccessAsync_EmptyUserId_Throws()
+    {
+        await using var context = CreateDbContext();
+
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => service.GrantAccessAsync(
+                Guid.NewGuid(),
+                Guid.Empty));
+    }
+
+    [Fact]
+    public async Task GrantAccessAsync_Owner_Throws()
+    {
+        await using var context = CreateDbContext();
+
+        var owner = CreateUser();
+
+        var document = CreateDocument("document.pdf");
+        document.UploadedByUserId = owner.Id;
+
+        context.Users.Add(owner);
+        context.Documents.Add(document);
+
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.GrantAccessAsync(
+                document.Id,
+                owner.Id));
+
+        Assert.Empty(
+            await context.DocumentAccesses.ToListAsync());
+    }
+
+    [Fact]
+    public async Task GrantAccessAsync_ExistingAccess_ReturnsExistingAccess()
+    {
+        await using var context = CreateDbContext();
+
+        var owner = CreateUser();
+        var user = CreateUser();
+
+        var document = CreateDocument("document.pdf");
+        document.UploadedByUserId = owner.Id;
+
+        context.Users.AddRange(owner, user);
+        context.Documents.Add(document);
+
+        var existingAccess = new DocumentAccess
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = document.Id,
+            UserId = user.Id,
+            GrantedAt = DateTime.UtcNow.AddMinutes(-5)
+        };
+
+        context.DocumentAccesses.Add(existingAccess);
+
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        var result = await service.GrantAccessAsync(
+            document.Id,
+            user.Id);
+
+        Assert.Equal(
+            existingAccess.Id,
+            result.Id);
+
+        Assert.Equal(
+            existingAccess.GrantedAt,
+            result.GrantedAt);
+
+        Assert.Single(
+            await context.DocumentAccesses.ToListAsync());
+    }
+
+    [Fact]
+    public async Task RevokeAccessAsync_ExistingAccess_RemovesAccess()
+    {
+        await using var context = CreateDbContext();
+
+        var owner = CreateUser();
+        var user = CreateUser();
+
+        var document = CreateDocument("document.pdf");
+        document.UploadedByUserId = owner.Id;
+
+        var access = new DocumentAccess
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = document.Id,
+            UserId = user.Id,
+            GrantedAt = DateTime.UtcNow
+        };
+
+        context.Users.AddRange(owner, user);
+        context.Documents.Add(document);
+        context.DocumentAccesses.Add(access);
+
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        var result = await service.RevokeAccessAsync(
+            document.Id,
+            user.Id);
+
+        Assert.True(result);
+
+        Assert.Empty(
+            await context.DocumentAccesses.ToListAsync());
+    }
+
+    [Fact]
+    public async Task RevokeAccessAsync_MissingAccess_ReturnsFalse()
+    {
+        await using var context = CreateDbContext();
+
+        var service = CreateService(context);
+
+        var result = await service.RevokeAccessAsync(
+            Guid.NewGuid(),
+            Guid.NewGuid());
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task RevokeAccessAsync_EmptyDocumentId_Throws()
+    {
+        await using var context = CreateDbContext();
+
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => service.RevokeAccessAsync(
+                Guid.Empty,
+                Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task RevokeAccessAsync_EmptyUserId_Throws()
+    {
+        await using var context = CreateDbContext();
+
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => service.RevokeAccessAsync(
+                Guid.NewGuid(),
+                Guid.Empty));
+    }
+
     private static AdminDocumentService CreateService(
         AppDbContext context,
         IFileValidator? validator = null,
